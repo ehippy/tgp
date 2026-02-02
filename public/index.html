@@ -21,21 +21,22 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             min-height: 100vh;
             display: flex;
-            align-items: flex-end;
-            justify-content: flex-start;
+            align-items: center;
+            justify-content: center;
             padding: 40px;
             background-color: #0d2535;
             background: linear-gradient(135deg, #0a1f2e, #1a3a4a, #0d2535);
         }
         
         h1 {
-            font-size: 4em;
+            font-size: clamp(2em, 8vw, 4em);
             background: linear-gradient(90deg, #00d4ff, #00f5d4, #00ff88, #00d4ff, #00f5d4);
             background-size: 200% auto;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            margin-bottom: 20px;
+            margin: 0;
+            text-align: center;
             animation: gradient 10s linear infinite;
         }
         
@@ -98,9 +99,15 @@
         // Swarm
         const PIXEL_COUNT = 100;
         
+        // Title avoidance
+        const TITLE_AVOIDANCE_DISTANCE = 10;
+        const TITLE_FLEE_THRUST = 1.2;
+        
         // =================
         // INITIALIZATION
         // =================
+        
+        const titleEl = document.querySelector('h1');
         
         // Create pixel swarm
         const pixels = [];
@@ -124,6 +131,30 @@
             
             // Update each pixel
             pixels.forEach(pixel => {
+                // Get title boundaries and avoid if too close
+                const titleRect = titleEl.getBoundingClientRect();
+                const closestX = Math.max(titleRect.left, Math.min(pixel.x, titleRect.right));
+                const closestY = Math.max(titleRect.top, Math.min(pixel.y, titleRect.bottom));
+                const dx = pixel.x - closestX;
+                const dy = pixel.y - closestY;
+                const distToTitle = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distToTitle < TITLE_AVOIDANCE_DISTANCE) {
+                    let fleeX, fleeY;
+                    if (distToTitle < 0.1) {
+                        // Pixel is inside title - flee in random direction
+                        const angle = Math.random() * Math.PI * 2;
+                        fleeX = Math.cos(angle) * TITLE_FLEE_THRUST;
+                        fleeY = Math.sin(angle) * TITLE_FLEE_THRUST;
+                    } else {
+                        fleeX = (dx / distToTitle) * TITLE_FLEE_THRUST;
+                        fleeY = (dy / distToTitle) * TITLE_FLEE_THRUST;
+                    }
+                    pixel.vx += fleeX;
+                    pixel.vy += fleeY;
+                    createPlume(pixel.x, pixel.y, fleeX, fleeY);
+                }
+                
                 // Exploration behavior - thrust in random directions
                 if (now > pixel.nextThrustTime) {
                     const angle = Math.random() * Math.PI * 2;
