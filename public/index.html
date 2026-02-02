@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TheGeekPad</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: flex-end;
+            justify-content: flex-start;
+            padding: 40px;
+            background: linear-gradient(135deg, #0a1f2e, #1a3a4a, #0d2535);
+        }
+        
+        h1 {
+            font-size: 4em;
+            background: linear-gradient(90deg, #00d4ff, #00f5d4, #00ff88, #00d4ff, #00f5d4);
+            background-size: 200% auto;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 20px;
+            animation: gradient 10s linear infinite;
+        }
+        
+        @keyframes gradient {
+            0% {
+                background-position: 0% center;
+            }
+            100% {
+                background-position: 200% center;
+            }
+        }
+        
+        .pixel {
+            position: fixed;
+            width: 4px;
+            height: 4px;
+            background: #00ff88;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #00ff88, 0 0 20px #00ff88;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        
+        .plume {
+            position: fixed;
+            width: 2px;
+            height: 2px;
+            background: #00ff88;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 998;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="pixel" id="pixel"></div>
+    <h1>TheGeekPad</h1>
+    <script>
+        // =================
+        // CONFIGURATION
+        // =================
+        
+        // Physics
+        const MAX_SPEED = 5;
+        const DRAG = 0.995;
+        const THRUST_POWER = 2.0;
+        const SOFT_BOUNDARY = 50;
+        const SOFT_BOUNDARY_PUSH = 0.1;
+        
+        // Exploration
+        const EXPLORE_THRUST_INTERVAL_MIN = 1000;
+        const EXPLORE_THRUST_INTERVAL_MAX = 3000;
+        const EXPLORE_THRUST_STRENGTH = 0.8;
+        
+        // Plume particles
+        const PLUME_VELOCITY_MULT = 2;
+        const PLUME_SPREAD = 0.5;
+        const PLUME_FADE_RATE = 0.05;
+        const PLUME_LIFE = 20;
+        
+        // Swarm
+        const PIXEL_COUNT = 100;
+        
+        // =================
+        // INITIALIZATION
+        // =================
+        
+        // Create pixel swarm
+        const pixels = [];
+        for (let i = 0; i < PIXEL_COUNT; i++) {
+            const el = document.createElement('div');
+            el.className = 'pixel';
+            document.body.appendChild(el);
+            
+            pixels.push({
+                el: el,
+                x: Math.random() * window.innerWidth,
+                y: Math.random() * window.innerHeight,
+                vx: (Math.random() - 0.5) * 2,
+                vy: (Math.random() - 0.5) * 2,
+                nextThrustTime: Date.now() + Math.random() * EXPLORE_THRUST_INTERVAL_MAX
+            });
+        }
+        
+        function animate() {
+            const now = Date.now();
+            
+            // Update each pixel
+            pixels.forEach(pixel => {
+                // Exploration behavior - thrust in random directions
+                if (now > pixel.nextThrustTime) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const thrustX = Math.cos(angle) * EXPLORE_THRUST_STRENGTH;
+                    const thrustY = Math.sin(angle) * EXPLORE_THRUST_STRENGTH;
+                    pixel.vx += thrustX;
+                    pixel.vy += thrustY;
+                    createPlume(pixel.x, pixel.y, thrustX, thrustY);
+                    pixel.nextThrustTime = now + EXPLORE_THRUST_INTERVAL_MIN + Math.random() * (EXPLORE_THRUST_INTERVAL_MAX - EXPLORE_THRUST_INTERVAL_MIN);
+                }
+                
+                // Limit max speed
+                const speed = Math.sqrt(pixel.vx * pixel.vx + pixel.vy * pixel.vy);
+                if (speed > MAX_SPEED) {
+                    pixel.vx = (pixel.vx / speed) * MAX_SPEED;
+                    pixel.vy = (pixel.vy / speed) * MAX_SPEED;
+                }
+                
+                // Apply slight drag
+                pixel.vx *= DRAG;
+                pixel.vy *= DRAG;
+                
+                // Update position
+                pixel.x += pixel.vx;
+                pixel.y += pixel.vy;
+                
+                // Soft boundaries - push back gently if near edge
+                if (pixel.x < SOFT_BOUNDARY) pixel.vx += SOFT_BOUNDARY_PUSH;
+                if (pixel.x > window.innerWidth - SOFT_BOUNDARY) pixel.vx -= SOFT_BOUNDARY_PUSH;
+                if (pixel.y < SOFT_BOUNDARY) pixel.vy += SOFT_BOUNDARY_PUSH;
+                if (pixel.y > window.innerHeight - SOFT_BOUNDARY) pixel.vy -= SOFT_BOUNDARY_PUSH;
+                
+                // Hard clamp
+                pixel.x = Math.max(0, Math.min(window.innerWidth - 4, pixel.x));
+                pixel.y = Math.max(0, Math.min(window.innerHeight - 4, pixel.y));
+                
+                pixel.el.style.left = pixel.x + 'px';
+                pixel.el.style.top = pixel.y + 'px';
+            });
+            
+            requestAnimationFrame(animate);
+        }
+        
+        animate();
+        
+        // Create thrust plume particles
+        function createPlume(x, y, dx, dy) {
+            const plume = document.createElement('div');
+            plume.className = 'plume';
+            plume.style.left = x + 'px';
+            plume.style.top = y + 'px';
+            document.body.appendChild(plume);
+            
+            let plumeX = x;
+            let plumeY = y;
+            let plumeVx = -dx * PLUME_VELOCITY_MULT + (Math.random() - 0.5) * PLUME_SPREAD;
+            let plumeVy = -dy * PLUME_VELOCITY_MULT + (Math.random() - 0.5) * PLUME_SPREAD;
+            let opacity = 1;
+            let life = PLUME_LIFE;
+            
+            function animatePlume() {
+                if (life <= 0) {
+                    plume.remove();
+                    return;
+                }
+                
+                plumeX += plumeVx;
+                plumeY += plumeVy;
+                opacity -= PLUME_FADE_RATE;
+                life--;
+                
+                plume.style.left = plumeX + 'px';
+                plume.style.top = plumeY + 'px';
+                plume.style.opacity = opacity;
+                
+                requestAnimationFrame(animatePlume);
+            }
+            
+            animatePlume();
+        }
+        
+    </script>
+</body>
+</html>
