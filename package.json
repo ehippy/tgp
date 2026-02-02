@@ -1,7 +1,7 @@
 {
   "name": "tgp",
   "version": "0.1.0",
-  "description": "The Geek Pad - Static site deployed with SST",
+  "description": "TheGeekPad - Static site deployed with SST",
   "type": "module",
   "scripts": {
     "dev": "sst dev",

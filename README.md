@@ -1,4 +1,4 @@
-# The Geek Pad
+# TheGeekPad
 
 A static website deployed to S3 and served via CloudFront using [SST](https://sst.dev).
 
