@@ -49,31 +49,19 @@
             }
         }
         
-        .pixel {
+        #swarm {
             position: fixed;
-            width: 4px;
-            height: 4px;
-            background: #00ff88;
-            border-radius: 50%;
-            box-shadow: 0 0 10px #00ff88, 0 0 20px #00ff88;
+            inset: 0;
+            width: 100%;
+            height: 100%;
             pointer-events: none;
             z-index: 1000;
-        }
-        
-        .plume {
-            position: fixed;
-            width: 2px;
-            height: 2px;
-            background: #00ff88;
-            border-radius: 50%;
-            pointer-events: none;
-            z-index: 998;
-            opacity: 1;
         }
     </style>
 </head>
 <body>
     <h1>thegeekpad</h1>
+    <canvas id="swarm"></canvas>
     <script>
         // =================
         // CONFIGURATION
@@ -221,31 +209,73 @@
         // =================
         
         const titleEl = document.querySelector('h1');
+        const canvas = document.getElementById('swarm');
+        const ctx = canvas.getContext('2d');
+        
+        const PIXEL_SIZE = 4;
+        const PLUME_SIZE = 2;
+        const GLOW_COLOR = '#00ff88';
+        
+        let viewWidth = window.innerWidth;
+        let viewHeight = window.innerHeight;
+        let dpr = window.devicePixelRatio || 1;
+        
+        function resizeCanvas() {
+            viewWidth = window.innerWidth;
+            viewHeight = window.innerHeight;
+            dpr = window.devicePixelRatio || 1;
+            canvas.width = Math.round(viewWidth * dpr);
+            canvas.height = Math.round(viewHeight * dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        // Pre-render the glowing pixel once (matches the old 10px + 20px box-shadow glow)
+        // so each frame is a cheap drawImage instead of a per-pixel shadowBlur
+        const GLOW_PAD = 40;
+        const SPRITE_SIZE = PIXEL_SIZE + GLOW_PAD * 2;
+        const sprite = document.createElement('canvas');
+        function renderSprite() {
+            sprite.width = sprite.height = Math.ceil(SPRITE_SIZE * dpr);
+            const sctx = sprite.getContext('2d');
+            sctx.scale(dpr, dpr);
+            const c = SPRITE_SIZE / 2;
+            sctx.fillStyle = GLOW_COLOR;
+            sctx.shadowColor = GLOW_COLOR;
+            [20, 10].forEach(blur => {
+                sctx.shadowBlur = blur * dpr;
+                sctx.beginPath();
+                sctx.arc(c, c, PIXEL_SIZE / 2, 0, Math.PI * 2);
+                sctx.fill();
+            });
+        }
+        renderSprite();
+        let spriteDpr = dpr;
         
         // Create pixel swarm
         const pixels = [];
         for (let i = 0; i < PIXEL_COUNT; i++) {
-            const el = document.createElement('div');
-            el.className = 'pixel';
-            document.body.appendChild(el);
-            
             pixels.push({
-                el: el,
-                x: Math.random() * window.innerWidth,
-                y: Math.random() * window.innerHeight,
+                x: Math.random() * viewWidth,
+                y: Math.random() * viewHeight,
                 vx: (Math.random() - 0.5) * 2,
                 vy: (Math.random() - 0.5) * 2,
                 nextThrustTime: Date.now() + Math.random() * EXPLORE_THRUST_INTERVAL_MAX
             });
         }
         
+        const plumes = [];
+        
         function animate() {
             const now = Date.now();
             
+            // Read title boundaries once per frame, not once per pixel
+            const titleRect = titleEl.getBoundingClientRect();
+            
             // Update each pixel
             pixels.forEach(pixel => {
-                // Get title boundaries and avoid if too close
-                const titleRect = titleEl.getBoundingClientRect();
+                // Avoid the title if too close
                 const closestX = Math.max(titleRect.left, Math.min(pixel.x, titleRect.right));
                 const closestY = Math.max(titleRect.top, Math.min(pixel.y, titleRect.bottom));
                 const dx = pixel.x - closestX;
@@ -302,61 +332,74 @@
                 
                 // Soft boundaries - push back gently if near edge
                 if (pixel.x < SOFT_BOUNDARY) pixel.vx += SOFT_BOUNDARY_PUSH;
-                if (pixel.x > window.innerWidth - SOFT_BOUNDARY) pixel.vx -= SOFT_BOUNDARY_PUSH;
+                if (pixel.x > viewWidth - SOFT_BOUNDARY) pixel.vx -= SOFT_BOUNDARY_PUSH;
                 if (pixel.y < SOFT_BOUNDARY) pixel.vy += SOFT_BOUNDARY_PUSH;
-                if (pixel.y > window.innerHeight - SOFT_BOUNDARY) pixel.vy -= SOFT_BOUNDARY_PUSH;
+                if (pixel.y > viewHeight - SOFT_BOUNDARY) pixel.vy -= SOFT_BOUNDARY_PUSH;
                 
                 // Hard clamp
-                pixel.x = Math.max(0, Math.min(window.innerWidth - 4, pixel.x));
-                pixel.y = Math.max(0, Math.min(window.innerHeight - 4, pixel.y));
-                
-                pixel.el.style.left = pixel.x + 'px';
-                pixel.el.style.top = pixel.y + 'px';
+                pixel.x = Math.max(0, Math.min(viewWidth - PIXEL_SIZE, pixel.x));
+                pixel.y = Math.max(0, Math.min(viewHeight - PIXEL_SIZE, pixel.y));
             });
+            
+            updatePlumes();
             
             // Update click repel state
             updateClickRepel();
             
+            draw();
+            
             requestAnimationFrame(animate);
         }
         
-        animate();
+        function draw() {
+            if (spriteDpr !== dpr) {
+                renderSprite();
+                spriteDpr = dpr;
+            }
+            
+            ctx.clearRect(0, 0, viewWidth, viewHeight);
+            
+            // Plumes sit beneath the pixels
+            ctx.fillStyle = GLOW_COLOR;
+            plumes.forEach(plume => {
+                ctx.globalAlpha = Math.max(0, plume.opacity);
+                ctx.fillRect(plume.x, plume.y, PLUME_SIZE, PLUME_SIZE);
+            });
+            ctx.globalAlpha = 1;
+            
+            pixels.forEach(pixel => {
+                ctx.drawImage(sprite, pixel.x - GLOW_PAD, pixel.y - GLOW_PAD, SPRITE_SIZE, SPRITE_SIZE);
+            });
+        }
         
         // Create thrust plume particles
         function createPlume(x, y, dx, dy) {
-            const plume = document.createElement('div');
-            plume.className = 'plume';
-            plume.style.left = x + 'px';
-            plume.style.top = y + 'px';
-            document.body.appendChild(plume);
-            
-            let plumeX = x;
-            let plumeY = y;
-            let plumeVx = -dx * PLUME_VELOCITY_MULT + (Math.random() - 0.5) * PLUME_SPREAD;
-            let plumeVy = -dy * PLUME_VELOCITY_MULT + (Math.random() - 0.5) * PLUME_SPREAD;
-            let opacity = 1;
-            let life = PLUME_LIFE;
-            
-            function animatePlume() {
-                if (life <= 0) {
-                    plume.remove();
-                    return;
-                }
-                
-                plumeX += plumeVx;
-                plumeY += plumeVy;
-                opacity -= PLUME_FADE_RATE;
-                life--;
-                
-                plume.style.left = plumeX + 'px';
-                plume.style.top = plumeY + 'px';
-                plume.style.opacity = opacity;
-                
-                requestAnimationFrame(animatePlume);
-            }
-            
-            animatePlume();
+            plumes.push({
+                x: x,
+                y: y,
+                vx: -dx * PLUME_VELOCITY_MULT + (Math.random() - 0.5) * PLUME_SPREAD,
+                vy: -dy * PLUME_VELOCITY_MULT + (Math.random() - 0.5) * PLUME_SPREAD,
+                opacity: 1,
+                life: PLUME_LIFE
+            });
         }
+        
+        function updatePlumes() {
+            for (let i = plumes.length - 1; i >= 0; i--) {
+                const plume = plumes[i];
+                plume.x += plume.vx;
+                plume.y += plume.vy;
+                plume.opacity -= PLUME_FADE_RATE;
+                plume.life--;
+                if (plume.life <= 0) {
+                    // Swap-remove: order doesn't matter for drawing
+                    plumes[i] = plumes[plumes.length - 1];
+                    plumes.pop();
+                }
+            }
+        }
+        
+        animate();
         
     </script>
 </body>
